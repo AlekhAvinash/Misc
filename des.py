@@ -2,13 +2,13 @@
 
 from os import urandom
 from Crypto.Cipher import DES
-from Crypto.Util.number import long_to_bytes as lb
+from Crypto.Util.number import long_to_bytes as lb, bytes_to_long as bl
 
 class KEYSTREAM:
 	# Used Functions
 	_sf = [
-			lambda a: a[1:]+[a[0]],
-			lambda a: [a[-1]]+a[:-1]
+			lambda a: [a[-1]]+a[:-1],
+			lambda a: a[1:]+[a[0]]
 	]
 	_pr = lambda k, m: [k[m[i]] for i in range(len(m))]
 
@@ -42,7 +42,7 @@ class KEYSTREAM:
 	
 	# Prepare Key for 16 rot shifts.
 	def _kp(self, key: bytes) -> list[int]:
-		key = ''.join(f'{i:08b}' for i in key)
+		key = f"{bl(key):064b}"
 		key = list(map(int, key))
 		return KEYSTREAM._pr(key, KEYSTREAM._PC1)
 	
@@ -57,8 +57,9 @@ class KEYSTREAM:
 			lt = self.key[:t]
 			rt = self.key[t:]
 			if KEYSTREAM._SFT[i*x]:
-				self.key = op(lt) + op(rt)
-			self.key = op(lt) + op(rt)
+				lt, rt = op(lt), op(rt)
+			lt, rt = op(lt), op(rt)
+			self.key = lt + rt
 			yield KEYSTREAM._pr(self.key, KEYSTREAM._PC2)
 		
 		# Assertion For Standardised Key Usage
@@ -166,13 +167,12 @@ class CIPHER:
 	
 	# Prepare Cipher For 16 Round Feistel Structure
 	def _kp(self, cip: bytes) -> list[int]:
-		cip = ''.join(f'{i:08b}' for i in cip)
+		cip = f"{bl(cip):064b}"
 		cip = list(map(int, cip))
 		return CIPHER._pr(cip, CIPHER._IP0)
 	
 	def f(self, vl, ky):
 		ct = lambda k: sum([i*pow(2, c) for c, i in enumerate(k[::-1])])
-
 		vl = CIPHER._pr(vl, CIPHER._ET0)
 		vl = CIPHER._xr(vl, ky)
 		ht = CIPHER._SBL-2
@@ -185,30 +185,34 @@ class CIPHER:
 		
 		return CIPHER._pr(ot, CIPHER._PT0)
 	
-	def encode(self, dv = 0):
+	def encode(self, dv = 1):
 		t = len(self.cip)//2
 		ky = self.key.gen(dv)
 
-		for _ in range(CIPHER._RDS):
+		for _ in range(16):
 			lt = self.cip[:t]
 			rt = self.cip[t:]
 			kt = self.f(rt, next(ky))
 			self.cip = rt + CIPHER._xr(lt, kt)
 		
-		return lb(CIPHER._ct(self.cip[t:]+self.cip[:t]))
+		self.cip = CIPHER._pr(self.cip[t:]+self.cip[:t], CIPHER._FP0)
+		return lb(CIPHER._ct(self.cip))
 	
 	def decode(self):
-		return self.encode(dv = 1)
+		return self.encode(dv = 0)
 
 def main():
-	ky = urandom(8)
-	pt = b"alekhavi"
+	ky = urandom(16)
+	pt = b'alekhavi'
+
 	out = CIPHER(pt, ky).encode()
 	cipher = DES.new(ky, DES.MODE_ECB)
-	print("True,", cipher.encrypt(pt))
+	cip = cipher.encrypt(pt)
+	
+	print("True,", cip)
 	print("Your,", out)
-	# ret = CIPHER(out, ky).decode()
-	# print(ret)
+
+	assert cip == out
 
 if __name__ == '__main__':
 	main()
