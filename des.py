@@ -50,17 +50,20 @@ class KEYSTREAM:
 	def gen(self, rev: int) -> list[int]:
 		op = KEYSTREAM._sf[rev]
 		t = len(self.key)//2
-		x = (rev*2)-1
+		x = KEYSTREAM._SFT[::(rev*2)-1]
 		ca = self.key
 		
 		for i in range(KEYSTREAM._RDS):
+			if not rev:
+				yield KEYSTREAM._pr(self.key, KEYSTREAM._PC2)
 			lt = self.key[:t]
 			rt = self.key[t:]
-			if KEYSTREAM._SFT[i*x]:
+			if x[i]:
 				lt, rt = op(lt), op(rt)
 			lt, rt = op(lt), op(rt)
 			self.key = lt + rt
-			yield KEYSTREAM._pr(self.key, KEYSTREAM._PC2)
+			if rev:
+				yield KEYSTREAM._pr(self.key, KEYSTREAM._PC2)
 		
 		# Assertion For Standardised Key Usage
 		assert ca == self.key
@@ -171,6 +174,7 @@ class CIPHER:
 		cip = list(map(int, cip))
 		return CIPHER._pr(cip, CIPHER._IP0)
 	
+	# F function
 	def f(self, vl, ky):
 		ct = lambda k: sum([i*pow(2, c) for c, i in enumerate(k[::-1])])
 		vl = CIPHER._pr(vl, CIPHER._ET0)
@@ -185,14 +189,17 @@ class CIPHER:
 		
 		return CIPHER._pr(ot, CIPHER._PT0)
 	
+	# Feistal 16 Layer Stucture
 	def encode(self, dv = 1):
 		t = len(self.cip)//2
 		ky = self.key.gen(dv)
 
-		for _ in range(16):
+		for _ in range(CIPHER._RDS):
 			lt = self.cip[:t]
 			rt = self.cip[t:]
-			kt = self.f(rt, next(ky))
+			kx = next(ky)
+
+			kt = self.f(rt, kx)
 			self.cip = rt + CIPHER._xr(lt, kt)
 		
 		self.cip = CIPHER._pr(self.cip[t:]+self.cip[:t], CIPHER._FP0)
@@ -202,17 +209,25 @@ class CIPHER:
 		return self.encode(dv = 0)
 
 def main():
-	ky = urandom(16)
+	ky = urandom(8)
 	pt = b'alekhavi'
 
 	out = CIPHER(pt, ky).encode()
 	cipher = DES.new(ky, DES.MODE_ECB)
 	cip = cipher.encrypt(pt)
-	
+
+	assert cip == out
 	print("True,", cip)
 	print("Your,", out)
 
+	out = CIPHER(out, ky).decode()
+	cipher = DES.new(ky, DES.MODE_ECB)
+	cip = cipher.decrypt(cip)
+	
 	assert cip == out
+	print("True,", cip)
+	print("Your,", out)
+
 
 if __name__ == '__main__':
 	main()
